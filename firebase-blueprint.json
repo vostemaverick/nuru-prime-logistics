@@ -1,0 +1,421 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized staff administrator UID record for Nuru Prime Logistics operations.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication UID of the staff member.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified staff email address.",
+          "maxLength": 200
+        },
+        "addedBy": {
+          "type": "string",
+          "description": "UID of the primary owner who added this staff admin.",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the admin record was created."
+        }
+      },
+      "required": ["uid", "email", "addedBy", "createdAt"]
+    },
+    "StaffSecurity": {
+      "title": "StaffSecurity",
+      "description": "Hashed staff dispatch passcode and single-use recovery code hashes managed exclusively by authenticated admins.",
+      "type": "object",
+      "properties": {
+        "passwordHash": {
+          "type": "string",
+          "description": "Salted PBKDF2-SHA256 hash of the secondary staff dispatch passcode.",
+          "minLength": 10,
+          "maxLength": 256
+        },
+        "recoveryCodeHashes": {
+          "type": "array",
+          "description": "Bounded list of up to 6 salted hashes of one-time recovery codes."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID of the admin who last updated security settings.",
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last security update."
+        }
+      },
+      "required": ["passwordHash", "recoveryCodeHashes", "updatedBy", "updatedAt"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Public vehicle inventory item available for sale or sourcing.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document identifier for the vehicle.",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "make": {
+          "type": "string",
+          "description": "Vehicle manufacturer.",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "model": {
+          "type": "string",
+          "description": "Vehicle model name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "year": {
+          "type": "string",
+          "description": "Model year (1950-2100).",
+          "minLength": 4,
+          "maxLength": 10
+        },
+        "price": {
+          "type": "string",
+          "description": "Price in KES as numeric string.",
+          "minLength": 1,
+          "maxLength": 20
+        },
+        "mileage": {
+          "type": "string",
+          "description": "Mileage in KM as numeric string.",
+          "maxLength": 20
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Available", "Reserved", "Sold"],
+          "description": "Current availability status."
+        },
+        "image": {
+          "type": "string",
+          "description": "Validated HTTPS/HTTP image URL.",
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "description": "Inspection notes and vehicle details.",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["id", "make", "model", "year", "price", "mileage", "status", "image", "description", "createdAt", "updatedAt"]
+    },
+    "Shipment": {
+      "title": "Shipment",
+      "description": "Publicly trackable non-PII shipment status and milestone timeline.",
+      "type": "object",
+      "properties": {
+        "trackingNumber": {
+          "type": "string",
+          "description": "Unique tracking code (e.g., NURU123).",
+          "minLength": 3,
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "bookingRef": {
+          "type": "string",
+          "description": "Linked booking reference if created from a pickup booking or converted quote.",
+          "maxLength": 40
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "Whether staff have approved this shipment for dispatch."
+        },
+        "service": {
+          "type": "string",
+          "description": "Logistics service category.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "from": {
+          "type": "string",
+          "description": "Origin city or hub.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "to": {
+          "type": "string",
+          "description": "Destination city or hub.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "weightKg": {
+          "type": "number",
+          "description": "Estimated cargo weight in kilograms."
+        },
+        "estimatedPriceKes": {
+          "type": "number",
+          "description": "Estimated shipping fee in KES."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending Approval", "Order Received", "Picked Up", "In Transit", "Customs Clearance", "Out for Delivery", "Delivered", "Declined"],
+          "description": "Current shipment stage."
+        },
+        "statusDetail": {
+          "type": "string",
+          "description": "Detailed customer-facing status update.",
+          "maxLength": 400
+        },
+        "eta": {
+          "type": "string",
+          "description": "Estimated delivery window.",
+          "maxLength": 80
+        },
+        "updatedAtLabel": {
+          "type": "string",
+          "description": "Human-readable East Africa Time label.",
+          "maxLength": 60
+        },
+        "milestones": {
+          "type": "array",
+          "description": "Chronological list of up to 12 shipment milestone objects."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["trackingNumber", "bookingRef", "approved", "service", "from", "to", "weightKg", "estimatedPriceKes", "status", "statusDetail", "eta", "updatedAtLabel", "milestones", "createdAt", "updatedAt"]
+    },
+    "Quote": {
+      "title": "Quote",
+      "description": "Customer quote request containing contact PII and staff review fields.",
+      "type": "object",
+      "properties": {
+        "quoteRef": {
+          "type": "string",
+          "description": "Unique quote reference (QT-XXXX).",
+          "minLength": 3,
+          "maxLength": 30,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Authenticated user UID if submitted while signed in, or empty string for guest intake.",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer full name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer phone or WhatsApp number.",
+          "minLength": 3,
+          "maxLength": 40
+        },
+        "service": {
+          "type": "string",
+          "description": "Requested service.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "from": {
+          "type": "string",
+          "description": "Origin location.",
+          "maxLength": 120
+        },
+        "to": {
+          "type": "string",
+          "description": "Destination location.",
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional cargo or sourcing notes.",
+          "maxLength": 600
+        },
+        "estimatedPriceKes": {
+          "type": "number",
+          "description": "Calculator estimate in KES if linked."
+        },
+        "quotedPriceKes": {
+          "type": "number",
+          "description": "Staff confirmed quote price in KES."
+        },
+        "staffNote": {
+          "type": "string",
+          "description": "Staff review note or quote terms.",
+          "maxLength": 400
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending Approval", "Quoted", "Approved", "Converted", "Closed"],
+          "description": "Quote lifecycle status."
+        },
+        "convertedTrackingNumber": {
+          "type": "string",
+          "description": "Tracking number created when converted.",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["quoteRef", "authorUid", "name", "phone", "service", "from", "to", "notes", "estimatedPriceKes", "quotedPriceKes", "staffNote", "status", "convertedTrackingNumber", "createdAt", "updatedAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Customer pickup booking containing contact PII and approval state.",
+      "type": "object",
+      "properties": {
+        "bookingRef": {
+          "type": "string",
+          "description": "Unique booking reference (BK-XXXX).",
+          "minLength": 3,
+          "maxLength": 30,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "trackingNumber": {
+          "type": "string",
+          "description": "Linked shipment tracking number.",
+          "minLength": 3,
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "Authenticated user UID if submitted while signed in, or empty string for guest intake.",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Customer full name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer phone or WhatsApp number.",
+          "minLength": 3,
+          "maxLength": 40
+        },
+        "service": {
+          "type": "string",
+          "description": "Selected logistics service.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "date": {
+          "type": "string",
+          "description": "Requested pickup date (YYYY-MM-DD).",
+          "minLength": 4,
+          "maxLength": 30
+        },
+        "time": {
+          "type": "string",
+          "description": "Requested pickup time.",
+          "minLength": 2,
+          "maxLength": 30
+        },
+        "pickup": {
+          "type": "string",
+          "description": "Pickup address or hub.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "delivery": {
+          "type": "string",
+          "description": "Delivery address or hub.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "notes": {
+          "type": "string",
+          "description": "Special handling notes.",
+          "maxLength": 500
+        },
+        "estimatedPriceKes": {
+          "type": "number",
+          "description": "Linked calculator estimate in KES."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending Approval", "Approved", "Declined"],
+          "description": "Staff approval state."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp."
+        }
+      },
+      "required": ["bookingRef", "trackingNumber", "authorUid", "name", "phone", "service", "date", "time", "pickup", "delivery", "notes", "estimatedPriceKes", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized staff administrator accounts."
+    },
+    "/staff_security/{docId}": {
+      "schema": { "$ref": "#/entities/StaffSecurity" },
+      "description": "Admin-only salted password hash and recovery code hashes."
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": { "$ref": "#/entities/Vehicle" },
+      "description": "Vehicle inventory catalog."
+    },
+    "/shipments/{trackingNumber}": {
+      "schema": { "$ref": "#/entities/Shipment" },
+      "description": "Non-PII shipment tracking records and milestone timelines."
+    },
+    "/quotes/{quoteRef}": {
+      "schema": { "$ref": "#/entities/Quote" },
+      "description": "Customer quote requests with PII isolated to admins and the submitting user."
+    },
+    "/bookings/{bookingRef}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Customer pickup bookings with PII isolated to admins and the submitting user."
+    }
+  }
+}

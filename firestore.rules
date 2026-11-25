@@ -1,0 +1,246 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Helpers
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedSignedIn() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwnerEmail() {
+      return isVerifiedSignedIn() && request.auth.token.email == 'vostematire@gmail.com';
+    }
+
+    function isAdmin() {
+      return isOwnerEmail() || (isVerifiedSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Entity Validators
+    function isValidAdminUser(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'addedBy', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'addedBy', 'createdAt']) &&
+        data.uid is string && data.uid == uid && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+        data.addedBy is string && data.addedBy.size() >= 1 && data.addedBy.size() <= 128 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidStaffSecurity(data) {
+      return data.keys().hasAll(['passwordHash', 'recoveryCodeHashes', 'updatedBy', 'updatedAt']) &&
+        data.keys().hasOnly(['passwordHash', 'recoveryCodeHashes', 'updatedBy', 'updatedAt']) &&
+        data.passwordHash is string && data.passwordHash.size() >= 10 && data.passwordHash.size() <= 256 &&
+        data.recoveryCodeHashes is list && data.recoveryCodeHashes.size() <= 6 &&
+        (data.recoveryCodeHashes.size() == 0 || (data.recoveryCodeHashes[0] is string && data.recoveryCodeHashes[0].size() <= 256)) &&
+        data.updatedBy is string && data.updatedBy == request.auth.uid && data.updatedBy.size() <= 128 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVehicle(data, vehicleId) {
+      return data.keys().hasAll(['id', 'make', 'model', 'year', 'price', 'mileage', 'status', 'image', 'description', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'make', 'model', 'year', 'price', 'mileage', 'status', 'image', 'description', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id == vehicleId && data.id.size() >= 1 && data.id.size() <= 80 &&
+        data.make is string && data.make.size() >= 1 && data.make.size() <= 60 &&
+        data.model is string && data.model.size() >= 1 && data.model.size() <= 80 &&
+        data.year is string && data.year.size() >= 4 && data.year.size() <= 10 &&
+        data.price is string && data.price.size() >= 1 && data.price.size() <= 20 &&
+        data.mileage is string && data.mileage.size() <= 20 &&
+        data.status in ['Available', 'Reserved', 'Sold'] &&
+        data.image is string && data.image.size() <= 500 &&
+        (data.image == '' || data.image.matches('^https?://.*$')) &&
+        data.description is string && data.description.size() <= 500 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidShipment(data, trackingNumber) {
+      return data.keys().hasAll(['trackingNumber', 'bookingRef', 'approved', 'service', 'from', 'to', 'weightKg', 'estimatedPriceKes', 'status', 'statusDetail', 'eta', 'updatedAtLabel', 'milestones', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['trackingNumber', 'bookingRef', 'approved', 'service', 'from', 'to', 'weightKg', 'estimatedPriceKes', 'status', 'statusDetail', 'eta', 'updatedAtLabel', 'milestones', 'createdAt', 'updatedAt']) &&
+        data.trackingNumber is string && data.trackingNumber == trackingNumber && data.trackingNumber.size() >= 3 && data.trackingNumber.size() <= 40 &&
+        data.bookingRef is string && data.bookingRef.size() <= 40 &&
+        data.approved is bool &&
+        data['service'] is string && data['service'].size() >= 1 && data['service'].size() <= 100 &&
+        data.from is string && data.from.size() >= 1 && data.from.size() <= 160 &&
+        data.to is string && data.to.size() >= 1 && data.to.size() <= 160 &&
+        (data.weightKg is int || data.weightKg is float) && data.weightKg >= 0 && data.weightKg <= 100000 &&
+        (data.estimatedPriceKes is int || data.estimatedPriceKes is float) && data.estimatedPriceKes >= 0 && data.estimatedPriceKes <= 100000000 &&
+        data.status in ['Pending Approval', 'Order Received', 'Picked Up', 'In Transit', 'Customs Clearance', 'Out for Delivery', 'Delivered', 'Declined'] &&
+        data.statusDetail is string && data.statusDetail.size() <= 400 &&
+        data.eta is string && data.eta.size() <= 80 &&
+        data.updatedAtLabel is string && data.updatedAtLabel.size() <= 60 &&
+        data.milestones is list && data.milestones.size() <= 12 &&
+        (data.milestones.size() == 0 || (
+          data.milestones[0] is map &&
+          data.milestones[0].keys().hasAll(['label', 'location', 'time', 'done']) &&
+          data.milestones[0].keys().hasOnly(['label', 'location', 'time', 'done'])
+        )) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidQuote(data, quoteRef) {
+      return data.keys().hasAll(['quoteRef', 'authorUid', 'name', 'phone', 'service', 'from', 'to', 'notes', 'estimatedPriceKes', 'quotedPriceKes', 'staffNote', 'status', 'convertedTrackingNumber', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['quoteRef', 'authorUid', 'name', 'phone', 'service', 'from', 'to', 'notes', 'estimatedPriceKes', 'quotedPriceKes', 'staffNote', 'status', 'convertedTrackingNumber', 'createdAt', 'updatedAt']) &&
+        data.quoteRef is string && data.quoteRef == quoteRef && data.quoteRef.size() >= 3 && data.quoteRef.size() <= 30 &&
+        data.authorUid is string && data.authorUid.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.phone is string && data.phone.size() >= 3 && data.phone.size() <= 40 &&
+        data['service'] is string && data['service'].size() >= 1 && data['service'].size() <= 100 &&
+        data.from is string && data.from.size() <= 120 &&
+        data.to is string && data.to.size() <= 120 &&
+        data.notes is string && data.notes.size() <= 600 &&
+        (data.estimatedPriceKes is int || data.estimatedPriceKes is float) && data.estimatedPriceKes >= 0 && data.estimatedPriceKes <= 100000000 &&
+        (data.quotedPriceKes is int || data.quotedPriceKes is float) && data.quotedPriceKes >= 0 && data.quotedPriceKes <= 100000000 &&
+        data.staffNote is string && data.staffNote.size() <= 400 &&
+        data.status in ['Pending Approval', 'Quoted', 'Approved', 'Converted', 'Closed'] &&
+        data.convertedTrackingNumber is string && data.convertedTrackingNumber.size() <= 40 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBooking(data, bookingRef) {
+      return data.keys().hasAll(['bookingRef', 'trackingNumber', 'authorUid', 'name', 'phone', 'service', 'date', 'time', 'pickup', 'delivery', 'notes', 'estimatedPriceKes', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['bookingRef', 'trackingNumber', 'authorUid', 'name', 'phone', 'service', 'date', 'time', 'pickup', 'delivery', 'notes', 'estimatedPriceKes', 'status', 'createdAt', 'updatedAt']) &&
+        data.bookingRef is string && data.bookingRef == bookingRef && data.bookingRef.size() >= 3 && data.bookingRef.size() <= 30 &&
+        data.trackingNumber is string && data.trackingNumber.size() >= 3 && data.trackingNumber.size() <= 40 && isValidId(data.trackingNumber) &&
+        data.authorUid is string && data.authorUid.size() <= 128 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.phone is string && data.phone.size() >= 3 && data.phone.size() <= 40 &&
+        data['service'] is string && data['service'].size() >= 1 && data['service'].size() <= 100 &&
+        data.date is string && data.date.size() >= 4 && data.date.size() <= 30 &&
+        data.time is string && data.time.size() >= 2 && data.time.size() <= 30 &&
+        data.pickup is string && data.pickup.size() >= 1 && data.pickup.size() <= 160 &&
+        data.delivery is string && data.delivery.size() >= 1 && data.delivery.size() <= 160 &&
+        data.notes is string && data.notes.size() <= 500 &&
+        (data.estimatedPriceKes is int || data.estimatedPriceKes is float) && data.estimatedPriceKes >= 0 && data.estimatedPriceKes <= 100000000 &&
+        data.status in ['Pending Approval', 'Approved', 'Declined'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // 1. Admins Registry
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isVerifiedSignedIn() && (request.auth.uid == uid || isOwnerEmail());
+      allow list: if isOwnerEmail();
+      allow create: if isValidId(uid) && isOwnerEmail() && isValidAdminUser(incoming(), uid) && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(uid) && isOwnerEmail();
+    }
+
+    // 2. Staff Security Credentials (Hashed Secondary Passcode & Recovery Codes)
+    match /staff_security/{docId} {
+      allow get: if isValidId(docId) && isAdmin();
+      allow list: if false;
+      allow create: if isValidId(docId) && isAdmin() && isValidStaffSecurity(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidId(docId) && isAdmin() && isValidStaffSecurity(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['passwordHash', 'recoveryCodeHashes', 'updatedBy', 'updatedAt']) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // 3. Vehicles Catalog (Public non-PII browse, Admin-only writes)
+    match /vehicles/{vehicleId} {
+      allow get: if isValidId(vehicleId);
+      allow list: if resource.data.status in ['Available', 'Reserved', 'Sold'];
+      allow create: if isValidId(vehicleId) && isAdmin() && isValidVehicle(incoming(), vehicleId) &&
+        incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isValidId(vehicleId) && isAdmin() && isValidVehicle(incoming(), vehicleId) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().id == existing().id &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['make', 'model', 'year', 'price', 'mileage', 'status', 'image', 'description', 'updatedAt']);
+      allow delete: if isValidId(vehicleId) && isAdmin();
+    }
+
+    // 4. Shipments (Public exact-code tracking without PII; Admin manages all; Guest booking creates paired Pending Approval shipment atomically)
+    match /shipments/{trackingNumber} {
+      allow get: if isValidId(trackingNumber);
+      allow list: if isAdmin();
+      allow create: if isValidId(trackingNumber) && isValidShipment(incoming(), trackingNumber) &&
+        incoming().createdAt == request.time && incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            incoming().approved == false &&
+            incoming().status == 'Pending Approval' &&
+            incoming().bookingRef.size() >= 3 &&
+            isValidId(incoming().bookingRef) &&
+            existsAfter(/databases/$(database)/documents/bookings/$(incoming().bookingRef))
+          )
+        );
+      allow update: if isValidId(trackingNumber) && isAdmin() && isValidShipment(incoming(), trackingNumber) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().trackingNumber == existing().trackingNumber &&
+        incoming().bookingRef == existing().bookingRef &&
+        incoming().updatedAt == request.time &&
+        (existing().approved == true || incoming().approved == true || incoming().status == 'Declined') &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['approved', 'status', 'statusDetail', 'eta', 'updatedAtLabel', 'milestones', 'updatedAt']);
+      allow delete: if isValidId(trackingNumber) && isAdmin();
+    }
+
+    // 5. Quotes (Strict PII isolation; public/customer create enters strictly as Pending Approval)
+    match /quotes/{quoteRef} {
+      allow get: if isValidId(quoteRef) && (isAdmin() || (isVerifiedSignedIn() && existing().authorUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedSignedIn() && resource.data.authorUid == request.auth.uid);
+      allow create: if isValidId(quoteRef) && isValidQuote(incoming(), quoteRef) &&
+        incoming().createdAt == request.time && incoming().updatedAt == request.time &&
+        incoming().status == 'Pending Approval' &&
+        incoming().quotedPriceKes == 0 &&
+        incoming().staffNote == '' &&
+        incoming().convertedTrackingNumber == '' &&
+        incoming().authorUid == (isVerifiedSignedIn() ? request.auth.uid : '');
+      allow update: if isValidId(quoteRef) && isAdmin() && isValidQuote(incoming(), quoteRef) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().quoteRef == existing().quoteRef &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'quotedPriceKes', 'staffNote', 'convertedTrackingNumber', 'updatedAt']);
+      allow delete: if isValidId(quoteRef) && isAdmin();
+    }
+
+    // 6. Bookings (Strict PII isolation; customer create enters strictly as Pending Approval with atomic shipment)
+    match /bookings/{bookingRef} {
+      allow get: if isValidId(bookingRef) && (isAdmin() || (isVerifiedSignedIn() && existing().authorUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedSignedIn() && resource.data.authorUid == request.auth.uid);
+      allow create: if isValidId(bookingRef) && isValidBooking(incoming(), bookingRef) &&
+        incoming().createdAt == request.time && incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            incoming().status == 'Pending Approval' &&
+            incoming().authorUid == (isVerifiedSignedIn() ? request.auth.uid : '') &&
+            existsAfter(/databases/$(database)/documents/shipments/$(incoming().trackingNumber))
+          )
+        );
+      allow update: if isValidId(bookingRef) && isAdmin() && isValidBooking(incoming(), bookingRef) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().bookingRef == existing().bookingRef &&
+        incoming().trackingNumber == existing().trackingNumber &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isValidId(bookingRef) && isAdmin();
+    }
+  }
+}
