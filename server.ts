@@ -91,6 +91,7 @@ interface BookingRecord {
 
 interface StoreData {
   adminPasswordHash?: string;
+  recoveryCodeHashes?: string[];
   shipments: Shipment[];
   vehicles: Vehicle[];
   quotes: QuoteRecord[];
@@ -209,6 +210,9 @@ function loadStore(): StoreData {
       const defaults = createDefaultStore();
       return {
         adminPasswordHash: typeof parsed.adminPasswordHash === 'string' ? parsed.adminPasswordHash : undefined,
+        recoveryCodeHashes: Array.isArray(parsed.recoveryCodeHashes)
+          ? parsed.recoveryCodeHashes.filter((h): h is string => typeof h === 'string')
+          : [],
         shipments:
           Array.isArray(parsed.shipments) && parsed.shipments.length > 0
             ? parsed.shipments.map((s) => ({
@@ -245,6 +249,32 @@ function persistStore(): void {
 /* ---------- Admin Auth (scrypt + Bearer token in memory) ---------- */
 const adminSessions = new Map<string, number>();
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
+const authAttempts = new Map<string, { count: number; resetAt: number }>();
+const AUTH_WINDOW_MS = 1000 * 60 * 15;
+const MAX_AUTH_FAILURES = 8;
+
+function checkAuthRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = authAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    return true;
+  }
+  return entry.count < MAX_AUTH_FAILURES;
+}
+
+function recordAuthFailure(ip: string): void {
+  const now = Date.now();
+  const entry = authAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    authAttempts.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
+}
+
+function clearAuthFailures(ip: string): void {
+  authAttempts.delete(ip);
+}
 
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -266,22 +296,50 @@ function getEnvPasscode(): string {
   return typeof process.env.ADMIN_PASSCODE === 'string' ? process.env.ADMIN_PASSCODE.trim() : '';
 }
 
-function verifyEnvPasscode(candidate: string): boolean {
-  const expected = getEnvPasscode();
+function getEnvRecoveryKey(): string {
+  return typeof process.env.ADMIN_RECOVERY_KEY === 'string' ? process.env.ADMIN_RECOVERY_KEY.trim() : '';
+}
+
+function verifyEnvSecret(candidate: string, expected: string): boolean {
   if (!expected) return false;
   const a = crypto.createHash('sha256').update(candidate).digest();
   const b = crypto.createHash('sha256').update(expected).digest();
   return crypto.timingSafeEqual(a, b);
 }
 
+function verifyEnvPasscode(candidate: string): boolean {
+  return verifyEnvSecret(candidate, getEnvPasscode());
+}
+
 function isAdminConfigured(): boolean {
   return Boolean(getEnvPasscode() || store.adminPasswordHash);
+}
+
+function generateRecoveryCodes(): { plaintext: string[]; hashes: string[] } {
+  const plaintext: string[] = [];
+  const hashes: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const partA = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const partB = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const code = `NR-${partA}-${partB}`;
+    plaintext.push(code);
+    hashes.push(hashPassword(code));
+  }
+  return { plaintext, hashes };
 }
 
 function issueSessionToken(): string {
   const token = crypto.randomBytes(32).toString('hex');
   adminSessions.set(token, Date.now() + SESSION_TTL_MS);
   return token;
+}
+
+function invalidateOtherSessions(keepToken?: string): void {
+  for (const key of Array.from(adminSessions.keys())) {
+    if (key !== keepToken) {
+      adminSessions.delete(key);
+    }
+  }
 }
 
 function extractBearerToken(req: Request): string {
@@ -617,6 +675,8 @@ app.get('/api/admin/status', (req, res) => {
   res.json({
     configured: isAdminConfigured(),
     envConfigured: Boolean(getEnvPasscode()),
+    recoveryKeyConfigured: Boolean(getEnvRecoveryKey()),
+    recoveryCodesRemaining: Array.isArray(store.recoveryCodeHashes) ? store.recoveryCodeHashes.length : 0,
     authenticated: isSessionValid(token),
   });
 });
@@ -631,13 +691,26 @@ app.post('/api/admin/setup', (req, res) => {
     res.status(400).json({ error: 'Please choose an admin password between 6 and 128 characters.' });
     return;
   }
+  const { plaintext, hashes } = generateRecoveryCodes();
   store.adminPasswordHash = hashPassword(password);
+  store.recoveryCodeHashes = hashes;
   persistStore();
   const token = issueSessionToken();
-  res.status(201).json({ token, configured: true });
+  res.status(201).json({
+    token,
+    configured: true,
+    recoveryCodes: plaintext,
+    recoveryCodesRemaining: hashes.length,
+  });
 });
 
 app.post('/api/admin/login', (req, res) => {
+  const clientIp = req.ip || 'local';
+  if (!checkAuthRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many failed attempts. Please wait 15 minutes or use a recovery code.' });
+    return;
+  }
+
   const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
   if (!password) {
     res.status(400).json({ error: 'Password is required.' });
@@ -656,12 +729,146 @@ app.post('/api/admin/login', (req, res) => {
   }
 
   if (!valid) {
+    recordAuthFailure(clientIp);
     res.status(401).json({ error: 'Invalid admin password.' });
     return;
   }
 
+  clearAuthFailures(clientIp);
   const token = issueSessionToken();
-  res.json({ token });
+  res.json({
+    token,
+    envConfigured: Boolean(getEnvPasscode()),
+    recoveryCodesRemaining: Array.isArray(store.recoveryCodeHashes) ? store.recoveryCodeHashes.length : 0,
+  });
+});
+
+app.post('/api/admin/change-password', requireAdmin, (req, res) => {
+  if (getEnvPasscode()) {
+    res.status(400).json({
+      error: 'Admin passcode is currently controlled by the ADMIN_PASSCODE secret. Update ADMIN_PASSCODE in Settings > Secrets.',
+    });
+    return;
+  }
+
+  const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword.trim() : '';
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: 'Current password and new password are required.' });
+    return;
+  }
+  if (newPassword.length < 6 || newPassword.length > 128) {
+    res.status(400).json({ error: 'New password must be between 6 and 128 characters.' });
+    return;
+  }
+  if (currentPassword === newPassword) {
+    res.status(400).json({ error: 'New password must be different from your current password.' });
+    return;
+  }
+  if (!store.adminPasswordHash || !verifyPasswordHash(currentPassword, store.adminPasswordHash)) {
+    res.status(401).json({ error: 'Current password is incorrect.' });
+    return;
+  }
+
+  store.adminPasswordHash = hashPassword(newPassword);
+  persistStore();
+  const nextToken = issueSessionToken();
+  invalidateOtherSessions(nextToken);
+
+  res.json({
+    token: nextToken,
+    message: 'Staff password updated successfully.',
+  });
+});
+
+app.post('/api/admin/recover', (req, res) => {
+  const clientIp = req.ip || 'local';
+  if (!checkAuthRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many failed recovery attempts. Please wait 15 minutes before trying again.' });
+    return;
+  }
+
+  if (getEnvPasscode()) {
+    res.status(400).json({
+      error: 'Admin passcode is currently controlled by the ADMIN_PASSCODE secret. Update ADMIN_PASSCODE in Settings > Secrets.',
+    });
+    return;
+  }
+
+  if (!store.adminPasswordHash) {
+    res.status(409).json({ error: 'No admin password has been set up yet. Use the First-Run Admin Setup form.' });
+    return;
+  }
+
+  const recoveryCode = typeof req.body?.recoveryCode === 'string' ? req.body.recoveryCode.trim().toUpperCase() : '';
+  const rawRecoveryInput = typeof req.body?.recoveryCode === 'string' ? req.body.recoveryCode.trim() : '';
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+
+  if (!rawRecoveryInput || !newPassword) {
+    res.status(400).json({ error: 'Recovery code and new password are required.' });
+    return;
+  }
+  if (newPassword.length < 6 || newPassword.length > 128) {
+    res.status(400).json({ error: 'New password must be between 6 and 128 characters.' });
+    return;
+  }
+
+  let matched = false;
+  const envRecoveryKey = getEnvRecoveryKey();
+  if (envRecoveryKey && verifyEnvSecret(rawRecoveryInput, envRecoveryKey)) {
+    matched = true;
+  }
+
+  if (!matched && Array.isArray(store.recoveryCodeHashes) && store.recoveryCodeHashes.length > 0) {
+    const idx = store.recoveryCodeHashes.findIndex((h) => verifyPasswordHash(recoveryCode, h));
+    if (idx >= 0) {
+      matched = true;
+      store.recoveryCodeHashes.splice(idx, 1);
+    }
+  }
+
+  if (!matched) {
+    recordAuthFailure(clientIp);
+    res.status(401).json({ error: 'Invalid or already-used recovery code.' });
+    return;
+  }
+
+  clearAuthFailures(clientIp);
+  store.adminPasswordHash = hashPassword(newPassword);
+  persistStore();
+  const token = issueSessionToken();
+  invalidateOtherSessions(token);
+
+  res.json({
+    token,
+    recoveryCodesRemaining: Array.isArray(store.recoveryCodeHashes) ? store.recoveryCodeHashes.length : 0,
+    message: 'Password reset successfully.',
+  });
+});
+
+app.post('/api/admin/recovery-codes/regenerate', requireAdmin, (req, res) => {
+  if (getEnvPasscode()) {
+    res.status(400).json({
+      error: 'Admin passcode is managed via ADMIN_PASSCODE in Settings > Secrets.',
+    });
+    return;
+  }
+
+  const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword.trim() : '';
+  if (!currentPassword || !store.adminPasswordHash || !verifyPasswordHash(currentPassword, store.adminPasswordHash)) {
+    res.status(401).json({ error: 'Please enter your current password to regenerate recovery codes.' });
+    return;
+  }
+
+  const { plaintext, hashes } = generateRecoveryCodes();
+  store.recoveryCodeHashes = hashes;
+  persistStore();
+
+  res.json({
+    recoveryCodes: plaintext,
+    recoveryCodesRemaining: hashes.length,
+  });
 });
 
 app.post('/api/admin/logout', (req, res) => {

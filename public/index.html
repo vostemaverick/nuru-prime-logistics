@@ -187,6 +187,12 @@ footer{background:#071A2E;color:#fff;text-align:center;padding:25px}
 .ops-btn-row button,.ops-btn-row a{padding:9px 14px;border-radius:8px;font-size:13px;font-weight:bold;text-decoration:none;display:inline-block}
 .ops-btn-secondary{background:#eef3f8;color:#0B2A4A}
 .ops-btn-gold{background:#FFB400;color:#000}
+.ops-link-btn{background:none;color:#3479f6;padding:4px 0;font-size:13px;font-weight:bold;text-decoration:underline;width:fit-content}
+.recovery-banner{display:none;background:#fff8e1;border:1px solid #ffd54f;border-radius:12px;padding:18px;margin-bottom:16px}
+.recovery-banner h4{color:#0B2A4A;margin-bottom:6px;font-size:15px}
+.recovery-banner p{color:#555;font-size:13px;margin-bottom:10px}
+.recovery-codes-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.recovery-code-pill{background:#fff;border:1px solid #d5dfec;border-radius:8px;padding:8px 10px;text-align:center;font-family:monospace;font-weight:bold;font-size:13px;color:#0B2A4A}
 .whatsapp{position:fixed;bottom:20px;right:20px;background:#25D366;color:#fff;padding:14px 20px;border-radius:30px;text-decoration:none;font-weight:bold;z-index:20}
 @media(max-width:800px){.hero-stats{grid-template-columns:repeat(2,minmax(0,1fr));max-width:500px}}
 @media(max-width:600px){header{padding:9px 16px}.brand-logo{height:42px;width:42px}.brand-name{font-size:12px}nav{display:none}.nav-toggle{display:block}.hero{padding:68px 18px 42px}.hero h1{font-size:clamp(38px,11vw,54px)}.hero p{font-size:14px}.hero-actions{flex-direction:column;align-items:center}.hero-actions a{width:min(100%,260px)}.hero-stats{gap:10px;margin-top:42px}.hero-stat{min-height:105px;padding:14px 8px}.hero-stat strong{font-size:18px}.vehicle-form,.calc-grid{grid-template-columns:1fr}.vehicle-form textarea,.vehicle-form .full{grid-column:auto}.manager-head{align-items:flex-start}}
@@ -583,9 +589,24 @@ footer{background:#071A2E;color:#fff;text-align:center;padding:25px}
         <p id="opsAuthSubtitle">Sign in to review customer quotes, update shipment statuses, and manage vehicle inventory.</p>
         <form id="opsAuthForm" onsubmit="submitAdminAuth(event)" style="padding:0;background:none">
           <input id="opsPassword" type="password" autocomplete="current-password" placeholder="Enter staff password" required>
+          <input id="opsPasswordConfirm" type="password" autocomplete="new-password" placeholder="Confirm staff password" style="display:none">
           <button id="opsAuthBtn" type="submit">Sign In</button>
         </form>
+        <button id="opsForgotBtn" type="button" class="ops-link-btn" onclick="toggleRecoverView(true)">Forgot password?</button>
         <div id="opsAuthError" class="ops-error"></div>
+      </div>
+
+      <div id="opsRecoverView" class="ops-auth" style="display:none">
+        <h3>Recover Staff Password</h3>
+        <p id="opsRecoverSubtitle">Enter one of your saved one-time recovery codes (or master recovery key) and choose a new password.</p>
+        <form id="opsRecoverForm" onsubmit="submitAdminRecover(event)" style="padding:0;background:none">
+          <input id="opsRecoveryCode" type="text" placeholder="Recovery code (e.g. NR-A1B2-C3D4)" required>
+          <input id="opsRecoverNewPass" type="password" autocomplete="new-password" placeholder="New password (min 6 chars)" required>
+          <input id="opsRecoverConfirmPass" type="password" autocomplete="new-password" placeholder="Confirm new password" required>
+          <button id="opsRecoverBtn" type="submit">Reset Password &amp; Sign In</button>
+        </form>
+        <button type="button" class="ops-link-btn" onclick="toggleRecoverView(false)">← Back to Sign In</button>
+        <div id="opsRecoverError" class="ops-error"></div>
       </div>
 
       <div id="opsDashView" style="display:none">
@@ -596,11 +617,21 @@ footer{background:#071A2E;color:#fff;text-align:center;padding:25px}
             <button type="button" class="ops-btn-secondary" onclick="logoutAdmin()">Sign Out</button>
           </div>
         </div>
+        <div id="opsRecoveryBanner" class="recovery-banner">
+          <h4>Save Your One-Time Recovery Codes</h4>
+          <p>Store these single-use codes safely. If you ever forget your staff password, any unused code lets you reset it.</p>
+          <div id="opsRecoveryCodesGrid" class="recovery-codes-grid"></div>
+          <div class="ops-btn-row">
+            <button type="button" class="ops-btn-gold" onclick="copyRecoveryCodes()">Copy All Codes</button>
+            <button type="button" class="ops-btn-secondary" onclick="dismissRecoveryBanner()">I Saved Them</button>
+          </div>
+        </div>
         <div id="opsKpis" class="ops-kpis"></div>
         <div class="ops-tabs">
           <button type="button" class="ops-tab active" data-tab="quotes" onclick="switchOpsTab('quotes',this)">Quote Requests</button>
           <button type="button" class="ops-tab" data-tab="shipments" onclick="switchOpsTab('shipments',this)">Shipments &amp; Bookings</button>
           <button type="button" class="ops-tab" data-tab="vehicles" onclick="switchOpsTab('vehicles',this)">Vehicle Inventory</button>
+          <button type="button" class="ops-tab" data-tab="security" onclick="switchOpsTab('security',this)">Password &amp; Recovery</button>
         </div>
         <div id="opsNotice" class="success-box" style="margin-bottom:14px;text-align:left"></div>
         <div id="opsTabContent" class="ops-list"></div>
@@ -632,6 +663,9 @@ let lastBookedTracking = '';
 let lastQuoteDraft = null;
 let adminToken = '';
 let adminConfigured = true;
+let adminEnvConfigured = false;
+let recoveryCodesRemaining = 0;
+let latestRecoveryCodes = [];
 let adminOverview = null;
 let activeOpsTab = 'quotes';
 
@@ -1337,6 +1371,8 @@ async function checkAdminStatus() {
     });
     const data = await res.json();
     adminConfigured = Boolean(data.configured);
+    adminEnvConfigured = Boolean(data.envConfigured);
+    recoveryCodesRemaining = Number(data.recoveryCodesRemaining || 0);
     updateOpsAuthCopy();
   } catch (err) {
     console.warn('Could not check admin status:', err);
@@ -1347,28 +1383,96 @@ function updateOpsAuthCopy() {
   const title = document.getElementById('opsAuthTitle');
   const sub = document.getElementById('opsAuthSubtitle');
   const input = document.getElementById('opsPassword');
+  const confirmInput = document.getElementById('opsPasswordConfirm');
+  const forgotBtn = document.getElementById('opsForgotBtn');
   const btn = document.getElementById('opsAuthBtn');
   if (adminConfigured) {
     title.textContent = 'Staff Sign In';
     sub.textContent = 'Sign in to review customer quotes, convert quotes into live shipments, update tracking milestones, and manage vehicles.';
     input.placeholder = 'Enter staff password';
     input.autocomplete = 'current-password';
+    confirmInput.style.display = 'none';
+    confirmInput.required = false;
+    confirmInput.value = '';
+    forgotBtn.style.display = 'inline-block';
     btn.textContent = 'Sign In';
   } else {
     title.textContent = 'First-Run Admin Setup';
-    sub.textContent = 'No staff password has been claimed yet. Choose a password (at least 6 characters) to secure the Operations Portal.';
+    sub.textContent = 'No staff password has been claimed yet. Choose a password (at least 6 characters) to secure the Operations Portal and generate recovery codes.';
     input.placeholder = 'Create staff password (min 6 chars)';
     input.autocomplete = 'new-password';
+    confirmInput.style.display = 'block';
+    confirmInput.required = true;
+    forgotBtn.style.display = 'none';
     btn.textContent = 'Set Admin Password & Enter';
+  }
+}
+
+function toggleRecoverView(showRecover) {
+  document.getElementById('opsAuthError').style.display = 'none';
+  document.getElementById('opsRecoverError').style.display = 'none';
+  if (showRecover) {
+    document.getElementById('opsAuthView').style.display = 'none';
+    document.getElementById('opsRecoverView').style.display = 'grid';
+    const sub = document.getElementById('opsRecoverSubtitle');
+    const form = document.getElementById('opsRecoverForm');
+    if (adminEnvConfigured) {
+      sub.textContent = 'Password is currently managed via the ADMIN_PASSCODE environment secret. Update ADMIN_PASSCODE in Settings > Secrets to change or recover it.';
+      form.style.display = 'none';
+    } else {
+      sub.textContent = 'Enter one of your saved one-time recovery codes (or master recovery key) and choose a new password.';
+      form.style.display = 'grid';
+    }
+  } else {
+    document.getElementById('opsRecoverView').style.display = 'none';
+    document.getElementById('opsAuthView').style.display = 'grid';
+  }
+}
+
+function showRecoveryCodesBanner(codes) {
+  if (!Array.isArray(codes) || !codes.length) return;
+  latestRecoveryCodes = codes;
+  const banner = document.getElementById('opsRecoveryBanner');
+  const grid = document.getElementById('opsRecoveryCodesGrid');
+  grid.textContent = '';
+  codes.forEach((code) => {
+    const pill = document.createElement('div');
+    pill.className = 'recovery-code-pill';
+    pill.textContent = code;
+    grid.appendChild(pill);
+  });
+  banner.style.display = 'block';
+}
+
+function dismissRecoveryBanner() {
+  latestRecoveryCodes = [];
+  document.getElementById('opsRecoveryBanner').style.display = 'none';
+}
+
+async function copyRecoveryCodes() {
+  if (!latestRecoveryCodes.length) return;
+  try {
+    await navigator.clipboard.writeText(latestRecoveryCodes.join('\n'));
+    showOpsNotice('Recovery codes copied to clipboard.');
+  } catch {
+    showOpsNotice('Copy failed — please write down the codes displayed above.');
   }
 }
 
 async function submitAdminAuth(e) {
   e.preventDefault();
   const password = document.getElementById('opsPassword').value.trim();
+  const confirmPassword = document.getElementById('opsPasswordConfirm').value.trim();
   const errEl = document.getElementById('opsAuthError');
   const btn = document.getElementById('opsAuthBtn');
   errEl.style.display = 'none';
+
+  if (!adminConfigured && password !== confirmPassword) {
+    errEl.textContent = 'Passwords do not match. Please re-enter.';
+    errEl.style.display = 'block';
+    return;
+  }
+
   btn.disabled = true;
 
   try {
@@ -1388,13 +1492,67 @@ async function submitAdminAuth(e) {
 
     adminToken = data.token;
     adminConfigured = true;
+    adminEnvConfigured = Boolean(data.envConfigured);
+    recoveryCodesRemaining = Number(data.recoveryCodesRemaining || 0);
     document.getElementById('opsPassword').value = '';
+    document.getElementById('opsPasswordConfirm').value = '';
     document.getElementById('opsAuthView').style.display = 'none';
+    document.getElementById('opsRecoverView').style.display = 'none';
     document.getElementById('opsDashView').style.display = 'block';
+    if (Array.isArray(data.recoveryCodes) && data.recoveryCodes.length) {
+      showRecoveryCodesBanner(data.recoveryCodes);
+    }
     renderVehicles();
     await loadAdminOverview();
   } catch (err) {
     errEl.textContent = 'Network error while signing in.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function submitAdminRecover(e) {
+  e.preventDefault();
+  const recoveryCode = document.getElementById('opsRecoveryCode').value.trim();
+  const newPassword = document.getElementById('opsRecoverNewPass').value.trim();
+  const confirmPass = document.getElementById('opsRecoverConfirmPass').value.trim();
+  const errEl = document.getElementById('opsRecoverError');
+  const btn = document.getElementById('opsRecoverBtn');
+  errEl.style.display = 'none';
+
+  if (newPassword !== confirmPass) {
+    errEl.textContent = 'New passwords do not match.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recoveryCode, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.token) {
+      errEl.textContent = data.error || 'Password recovery failed.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    adminToken = data.token;
+    adminConfigured = true;
+    recoveryCodesRemaining = Number(data.recoveryCodesRemaining || 0);
+    document.getElementById('opsRecoverForm').reset();
+    document.getElementById('opsRecoverView').style.display = 'none';
+    document.getElementById('opsAuthView').style.display = 'none';
+    document.getElementById('opsDashView').style.display = 'block';
+    showOpsNotice('Password reset! Remaining one-time recovery codes: ' + recoveryCodesRemaining + '.');
+    renderVehicles();
+    await loadAdminOverview();
+  } catch (err) {
+    errEl.textContent = 'Network error during password recovery.';
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
@@ -1410,7 +1568,9 @@ async function logoutAdmin() {
   }
   adminToken = '';
   adminOverview = null;
+  dismissRecoveryBanner();
   document.getElementById('opsDashView').style.display = 'none';
+  document.getElementById('opsRecoverView').style.display = 'none';
   document.getElementById('opsAuthView').style.display = 'grid';
   closeVehicleManager();
   renderVehicles();
@@ -1801,24 +1961,185 @@ function renderOpsTab() {
     return;
   }
 
-  // Vehicles tab
-  const infoCard = document.createElement('div');
-  infoCard.className = 'ops-item';
-  const msg = document.createElement('p');
-  msg.className = 'ops-meta';
-  msg.textContent =
-    'Vehicle management is unlocked! You can add new vehicles or use Edit / Delete directly on any card in the Cars for Sale section.';
-  const openBtn = document.createElement('button');
-  openBtn.type = 'button';
-  openBtn.style.width = 'fit-content';
-  openBtn.textContent = 'Open Add / Edit Vehicle Form →';
-  openBtn.onclick = () => {
-    document.getElementById('vehicleManager').classList.add('open');
-    scrollToSection('vehicles');
+  if (activeOpsTab === 'vehicles') {
+    const infoCard = document.createElement('div');
+    infoCard.className = 'ops-item';
+    const msg = document.createElement('p');
+    msg.className = 'ops-meta';
+    msg.textContent =
+      'Vehicle management is unlocked! You can add new vehicles or use Edit / Delete directly on any card in the Cars for Sale section.';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.style.width = 'fit-content';
+    openBtn.textContent = 'Open Add / Edit Vehicle Form →';
+    openBtn.onclick = () => {
+      document.getElementById('vehicleManager').classList.add('open');
+      scrollToSection('vehicles');
+    };
+    infoCard.appendChild(msg);
+    infoCard.appendChild(openBtn);
+    container.appendChild(infoCard);
+    return;
+  }
+
+  // Password & Recovery tab
+  if (adminEnvConfigured) {
+    const envCard = document.createElement('div');
+    envCard.className = 'ops-item';
+    const title = document.createElement('div');
+    title.className = 'ops-item-title';
+    title.textContent = 'Managed via Settings > Secrets';
+    const desc = document.createElement('p');
+    desc.className = 'ops-meta';
+    desc.textContent =
+      'Your staff passcode is controlled by the ADMIN_PASSCODE environment variable. To change or recover it, update ADMIN_PASSCODE in AI Studio Settings > Secrets.';
+    envCard.appendChild(title);
+    envCard.appendChild(desc);
+    container.appendChild(envCard);
+    return;
+  }
+
+  const changeCard = document.createElement('div');
+  changeCard.className = 'ops-item';
+  const chTitle = document.createElement('div');
+  chTitle.className = 'ops-item-title';
+  chTitle.textContent = 'Change Staff Password';
+
+  const chForm = document.createElement('form');
+  chForm.style.padding = '0';
+  chForm.style.background = 'none';
+
+  const curInput = document.createElement('input');
+  curInput.type = 'password';
+  curInput.placeholder = 'Current password';
+  curInput.required = true;
+
+  const newInput = document.createElement('input');
+  newInput.type = 'password';
+  newInput.placeholder = 'New password (min 6 chars)';
+  newInput.required = true;
+
+  const confInput = document.createElement('input');
+  confInput.type = 'password';
+  confInput.placeholder = 'Confirm new password';
+  confInput.required = true;
+
+  const chErr = document.createElement('div');
+  chErr.className = 'ops-error';
+
+  const chBtn = document.createElement('button');
+  chBtn.type = 'submit';
+  chBtn.style.width = 'fit-content';
+  chBtn.textContent = 'Update Password';
+
+  chForm.onsubmit = async (ev) => {
+    ev.preventDefault();
+    chErr.style.display = 'none';
+    if (newInput.value.trim() !== confInput.value.trim()) {
+      chErr.textContent = 'New passwords do not match.';
+      chErr.style.display = 'block';
+      return;
+    }
+    chBtn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + adminToken,
+        },
+        body: JSON.stringify({
+          currentPassword: curInput.value.trim(),
+          newPassword: newInput.value.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        chErr.textContent = data.error || 'Could not change password.';
+        chErr.style.display = 'block';
+        return;
+      }
+      if (data.token) adminToken = data.token;
+      chForm.reset();
+      showOpsNotice(data.message || 'Password updated successfully.');
+    } finally {
+      chBtn.disabled = false;
+    }
   };
-  infoCard.appendChild(msg);
-  infoCard.appendChild(openBtn);
-  container.appendChild(infoCard);
+
+  chForm.appendChild(curInput);
+  chForm.appendChild(newInput);
+  chForm.appendChild(confInput);
+  chForm.appendChild(chErr);
+  chForm.appendChild(chBtn);
+  changeCard.appendChild(chTitle);
+  changeCard.appendChild(chForm);
+  container.appendChild(changeCard);
+
+  const recCard = document.createElement('div');
+  recCard.className = 'ops-item';
+  const recTitle = document.createElement('div');
+  recTitle.className = 'ops-item-title';
+  recTitle.textContent = 'One-Time Recovery Codes (' + recoveryCodesRemaining + ' unused)';
+  const recDesc = document.createElement('p');
+  recDesc.className = 'ops-meta';
+  recDesc.textContent =
+    'Generate a fresh set of 6 single-use recovery codes (this invalidates any previous codes). Confirm with your current password.';
+
+  const recForm = document.createElement('form');
+  recForm.style.padding = '0';
+  recForm.style.background = 'none';
+
+  const recPass = document.createElement('input');
+  recPass.type = 'password';
+  recPass.placeholder = 'Confirm current password';
+  recPass.required = true;
+
+  const recErr = document.createElement('div');
+  recErr.className = 'ops-error';
+
+  const recBtn = document.createElement('button');
+  recBtn.type = 'submit';
+  recBtn.className = 'ops-btn-gold';
+  recBtn.style.width = 'fit-content';
+  recBtn.textContent = 'Generate New Recovery Codes';
+
+  recForm.onsubmit = async (ev) => {
+    ev.preventDefault();
+    recErr.style.display = 'none';
+    recBtn.disabled = true;
+    try {
+      const res = await fetch('/api/admin/recovery-codes/regenerate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + adminToken,
+        },
+        body: JSON.stringify({ currentPassword: recPass.value.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        recErr.textContent = data.error || 'Could not regenerate recovery codes.';
+        recErr.style.display = 'block';
+        return;
+      }
+      recoveryCodesRemaining = Number(data.recoveryCodesRemaining || 0);
+      recForm.reset();
+      showRecoveryCodesBanner(data.recoveryCodes);
+      showOpsNotice('Generated 6 new single-use recovery codes.');
+      renderOpsTab();
+    } finally {
+      recBtn.disabled = false;
+    }
+  };
+
+  recForm.appendChild(recPass);
+  recForm.appendChild(recErr);
+  recForm.appendChild(recBtn);
+  recCard.appendChild(recTitle);
+  recCard.appendChild(recDesc);
+  recCard.appendChild(recForm);
+  container.appendChild(recCard);
 }
 
 setMinBookingDate();
