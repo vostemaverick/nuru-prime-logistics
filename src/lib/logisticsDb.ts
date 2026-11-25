@@ -454,6 +454,15 @@ export async function trackShipmentByCode(rawCode: string): Promise<Shipment | n
     const fallback = DEFAULT_SHIPMENTS.find((s) => s.trackingNumber === code);
     return fallback || null;
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error || '');
+    const errCode =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+    if (msg.includes('client is offline') || errCode === 'unavailable') {
+      const fallback = DEFAULT_SHIPMENTS.find((s) => s.trackingNumber === code);
+      if (fallback) return fallback;
+    }
     handleFirestoreError(error, OperationType.GET, path);
   }
 }

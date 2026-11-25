@@ -251,8 +251,12 @@ export function OperationsPortal({
     onClearAuthNotice();
     if (!ensureAuthClientReady()) return;
     const trimmedEmail = emailInput.trim();
-    if (!trimmedEmail || !trimmedEmail.includes('@')) {
-      setAuthError('Enter a valid staff email address first.');
+    if (!trimmedEmail) {
+      setAuthError('Please enter your staff email address to receive a password reset link.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setAuthError('Please enter a valid staff email address (auth/invalid-email).');
       return;
     }
     setAuthBusy(true);
@@ -569,49 +573,66 @@ export function OperationsPortal({
               )}
 
               {authMode === 'reset' && (
-                <form className="nuru-form" onSubmit={handlePasswordResetEmail} style={{ padding: 0, background: 'none' }}>
-                  <div className="ops-item" style={{ textAlign: 'left', marginBottom: '4px' }}>
-                    <div className="ops-item-title">Reset Staff Password</div>
-                    <p className="ops-meta" style={{ margin: '4px 0 0' }}>
-                      Enter your staff Email &amp; Password account address below and we will send a Firebase password reset link to your inbox. (Google Sign-In accounts use your Google account password.)
-                    </p>
+                <section
+                  id="forgot-password-section"
+                  aria-labelledby="forgot-password-heading"
+                  className="ops-item"
+                  style={{ textAlign: 'left', marginTop: '8px' }}
+                >
+                  <div id="forgot-password-heading" className="ops-item-title">
+                    Forgot Password
                   </div>
-                  <input
-                    className="nuru-input"
-                    type="email"
-                    placeholder="Staff email address"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    required
-                  />
-                  <button type="submit" className="nuru-btn" disabled={authBusy}>
-                    {authBusy && authAction === 'reset' ? 'Sending Reset Email...' : 'Send Password Reset Email'}
-                  </button>
-                  <div className="ops-btn-row" style={{ justifyContent: 'space-between' }}>
-                    <button
-                      type="button"
-                      className="ops-link-btn"
-                      onClick={() => {
-                        setAuthError('');
-                        setAuthSuccess('');
-                        setAuthMode('email');
-                      }}
-                    >
-                      ← Back to Email Sign In
+                  <p className="ops-meta" style={{ margin: '4px 0 10px' }}>
+                    Enter the email address for your staff Email &amp; Password account and we will send a Firebase password reset link to your inbox. (Google Sign-In accounts use your Google account password.)
+                  </p>
+                  <form
+                    className="nuru-form"
+                    noValidate
+                    onSubmit={handlePasswordResetEmail}
+                    style={{ padding: 0, background: 'none' }}
+                  >
+                    <label htmlFor="reset-staff-email" className="ops-meta" style={{ fontWeight: 600 }}>
+                      Staff Email Address
+                    </label>
+                    <input
+                      id="reset-staff-email"
+                      className="nuru-input"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="Enter your staff email address"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      required
+                    />
+                    <button type="submit" className="nuru-btn" disabled={authBusy}>
+                      {authBusy && authAction === 'reset' ? 'Sending Reset Email...' : 'Send Password Reset Email'}
                     </button>
-                    <button
-                      type="button"
-                      className="ops-link-btn"
-                      onClick={() => {
-                        setAuthError('');
-                        setAuthSuccess('');
-                        setAuthMode('google');
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                    <div className="ops-btn-row" style={{ justifyContent: 'space-between' }}>
+                      <button
+                        type="button"
+                        className="ops-link-btn"
+                        onClick={() => {
+                          setAuthError('');
+                          setAuthSuccess('');
+                          setAuthMode('email');
+                        }}
+                      >
+                        ← Back to Email Sign In
+                      </button>
+                      <button
+                        type="button"
+                        className="ops-link-btn"
+                        onClick={() => {
+                          setAuthError('');
+                          setAuthSuccess('');
+                          setAuthMode('google');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </section>
               )}
             </div>
           ) : !isAdmin ? (

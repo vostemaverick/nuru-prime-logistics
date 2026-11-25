@@ -5,6 +5,7 @@ import {
   getDocFromServer,
   getFirestore,
   initializeFirestore,
+  setLogLevel,
   type Firestore,
 } from 'firebase/firestore';
 import rawAppletConfig from '../../firebase-applet-config.json';
@@ -54,6 +55,7 @@ if (missingFields.length > 0) {
 } else {
   try {
     appInstance = initializeApp(firebaseConfig);
+    setLogLevel('silent');
     try {
       dbInstance = initializeFirestore(
         appInstance,
@@ -169,19 +171,14 @@ export function formatFirebaseAuthError(err: unknown): string {
   return code ? `Authentication failed (${code}): ${rawMessage}` : rawMessage;
 }
 
-async function testConnection(retry = true) {
+async function testConnection() {
   if (!dbInstance) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   try {
     await getDocFromServer(doc(dbInstance, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      if (retry) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        await testConnection(false);
-        return;
-      }
-      console.error('Please check your Firebase configuration.');
+      console.warn('Firestore backend unreachable from this browser session; offline fallback active.');
     }
   }
 }
