@@ -1,0 +1,6 @@
+{
+  "name": "Nuru Prime Logistics",
+  "description": "Logistics, sourcing, procurement, vehicle sourcing, import/export support, and complex supply-chain advisory across Kenya and beyond.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
