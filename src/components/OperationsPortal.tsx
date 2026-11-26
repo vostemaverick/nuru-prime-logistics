@@ -69,6 +69,76 @@ const SHIPMENT_STATUSES: ShipmentStatus[] = [
   'Delivered',
 ];
 
+const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+interface PasswordStrengthResult {
+  hasMinLength: boolean;
+  hasUpper: boolean;
+  hasLower: boolean;
+  hasNumber: boolean;
+  hasSpecial: boolean;
+  score: number;
+  label: 'Empty' | 'Weak' | 'Fair' | 'Strong';
+  isStrong: boolean;
+}
+
+function evaluatePasswordStrength(password: string): PasswordStrengthResult {
+  const hasMinLength = /^.{8,}$/.test(password);
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  const score = [hasMinLength, hasUpper, hasLower, hasNumber, hasSpecial].filter(Boolean).length;
+  const isStrong = STRONG_PASSWORD_REGEX.test(password);
+  const label: PasswordStrengthResult['label'] = !password
+    ? 'Empty'
+    : isStrong
+    ? 'Strong'
+    : score >= 3
+    ? 'Fair'
+    : 'Weak';
+  return { hasMinLength, hasUpper, hasLower, hasNumber, hasSpecial, score, label, isStrong };
+}
+
+function PasswordStrengthMeter({ password, labelPrefix = 'Password strength' }: { password: string; labelPrefix?: string }) {
+  if (!password) return null;
+  const res = evaluatePasswordStrength(password);
+  const color = res.isStrong ? '#16a34a' : res.label === 'Fair' ? '#d97706' : '#dc2626';
+  return (
+    <div
+      style={{
+        textAlign: 'left',
+        fontSize: '12px',
+        padding: '8px 10px',
+        borderRadius: '8px',
+        background: '#f8fafc',
+        border: `1px solid ${color}`,
+      }}
+    >
+      <div style={{ fontWeight: 700, color, marginBottom: '4px' }}>
+        {labelPrefix}: {res.label} ({res.score}/5)
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', color: '#475569' }}>
+        <span style={{ color: res.hasMinLength ? '#16a34a' : '#dc2626' }}>
+          {res.hasMinLength ? '✓' : '✗'} 8+ chars
+        </span>
+        <span style={{ color: res.hasUpper ? '#16a34a' : '#dc2626' }}>
+          {res.hasUpper ? '✓' : '✗'} Uppercase
+        </span>
+        <span style={{ color: res.hasLower ? '#16a34a' : '#dc2626' }}>
+          {res.hasLower ? '✓' : '✗'} Lowercase
+        </span>
+        <span style={{ color: res.hasNumber ? '#16a34a' : '#dc2626' }}>
+          {res.hasNumber ? '✓' : '✗'} Number
+        </span>
+        <span style={{ color: res.hasSpecial ? '#16a34a' : '#dc2626' }}>
+          {res.hasSpecial ? '✓' : '✗'} Symbol
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function OperationsPortal({
   user,
   isAdmin,
@@ -327,6 +397,12 @@ export function OperationsPortal({
   async function handleSetupPasscode(e: React.FormEvent) {
     e.preventDefault();
     setSecurityErr('');
+    if (!evaluatePasswordStrength(setupPass.trim()).isStrong) {
+      setSecurityErr(
+        'Passcode must be at least 8 characters and include uppercase, lowercase, a number, and a special character.'
+      );
+      return;
+    }
     if (setupPass.trim() !== setupPassConf.trim()) {
       setSecurityErr('Passcodes do not match.');
       return;
@@ -349,6 +425,12 @@ export function OperationsPortal({
   async function handleChangePasscode(e: React.FormEvent) {
     e.preventDefault();
     setSecurityErr('');
+    if (!evaluatePasswordStrength(newPass.trim()).isStrong) {
+      setSecurityErr(
+        'New passcode must be at least 8 characters and include uppercase, lowercase, a number, and a special character.'
+      );
+      return;
+    }
     if (newPass.trim() !== newPassConf.trim()) {
       setSecurityErr('New passcodes do not match.');
       return;
@@ -371,6 +453,12 @@ export function OperationsPortal({
   async function handleRecoverPasscode(e: React.FormEvent) {
     e.preventDefault();
     setSecurityErr('');
+    if (!evaluatePasswordStrength(recoverNewPass.trim()).isStrong) {
+      setSecurityErr(
+        'New passcode must be at least 8 characters and include uppercase, lowercase, a number, and a special character.'
+      );
+      return;
+    }
     if (recoverNewPass.trim() !== recoverNewPassConf.trim()) {
       setSecurityErr('New passcodes do not match.');
       return;
@@ -551,6 +639,7 @@ export function OperationsPortal({
                     onChange={(e) => setPassInput(e.target.value)}
                     required
                   />
+                  <PasswordStrengthMeter password={passInput} />
                   <div className="ops-btn-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                     <button type="submit" className="nuru-btn" disabled={authBusy} style={{ flex: 1 }}>
                       {authBusy && authAction === 'email' ? 'Signing in...' : 'Sign In with Email'}
@@ -583,7 +672,7 @@ export function OperationsPortal({
                     Forgot Password
                   </div>
                   <p className="ops-meta" style={{ margin: '4px 0 10px' }}>
-                    Enter the email address for your staff Email &amp; Password account and we will send a Firebase password reset link to your inbox. (Google Sign-In accounts use your Google account password.)
+                    Enter the email address for your staff Email &amp; Password account and we will send a Firebase password reset link to your inbox. When choosing your new password, use 8+ characters with uppercase, lowercase, a number, and a symbol.
                   </p>
                   <form
                     className="nuru-form"
@@ -1179,11 +1268,12 @@ export function OperationsPortal({
                         <input
                           className="nuru-input"
                           type="password"
-                          placeholder="Create staff passcode (min 6 chars)"
+                          placeholder="Create staff passcode (8+ chars, upper, lower, number, symbol)"
                           value={setupPass}
                           onChange={(e) => setSetupPass(e.target.value)}
                           required
                         />
+                        <PasswordStrengthMeter password={setupPass} labelPrefix="Passcode strength" />
                         <input
                           className="nuru-input"
                           type="password"
@@ -1223,11 +1313,12 @@ export function OperationsPortal({
                           <input
                             className="nuru-input"
                             type="password"
-                            placeholder="New passcode (min 6 chars)"
+                            placeholder="New passcode (8+ chars, upper, lower, number, symbol)"
                             value={newPass}
                             onChange={(e) => setNewPass(e.target.value)}
                             required
                           />
+                          <PasswordStrengthMeter password={newPass} labelPrefix="New passcode strength" />
                           <input
                             className="nuru-input"
                             type="password"
@@ -1271,11 +1362,12 @@ export function OperationsPortal({
                           <input
                             className="nuru-input"
                             type="password"
-                            placeholder="New passcode (min 6 chars)"
+                            placeholder="New passcode (8+ chars, upper, lower, number, symbol)"
                             value={recoverNewPass}
                             onChange={(e) => setRecoverNewPass(e.target.value)}
                             required
                           />
+                          <PasswordStrengthMeter password={recoverNewPass} labelPrefix="New passcode strength" />
                           <input
                             className="nuru-input"
                             type="password"
